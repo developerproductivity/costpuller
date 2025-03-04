@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"net/url"
@@ -253,14 +254,14 @@ func redirectListener(urlString string) url.Values {
 // handleRedirectResponse is a helper function which evaluates the redirect
 // query parameters and sends an appropriate response to the request.
 func handleRedirectResponse(w http.ResponseWriter, queryParams url.Values) {
-	msg := `<!doctype html><html lang="en" dir="ltr"><body><h2>`
+	msg := `<!doctype html><html lang="en" dir="ltr"><body>`
 	if queryParams.Get("code") == "" {
-		msg += "Failure -- no access code received!</h2>"
+		msg += "<h2>Failure -- no access code received!</h2>"
 		if queryParams.Get("error") != "" {
-			msg += "<h3>Error:  " + queryParams.Get("error") + "</h3>"
+			msg += "<h3>Error:  " + html.EscapeString(queryParams.Get("error")) + "</h3>"
 		}
 	} else {
-		msg += "Success!  Access code received.</h2>"
+		msg += "<h2>Success!  Access code received.</h2>"
 	}
 	msg += "<p>You may close this browser window.</body></html>"
 	_, err := fmt.Fprint(w, msg)

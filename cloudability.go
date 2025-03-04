@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
 	"time"
 )
@@ -210,8 +211,8 @@ func getApptioOpentoken(configMap Configuration, client http.Client) string {
 	apiKeyPairAny := getMapKeyValue(configMap, "api_key_pair", "cloudability")
 	apiKeyPair, ok := apiKeyPairAny.([]any)
 	if !ok {
-		log.Fatalf("Error reading Cloudability API keypair, expected an array, found %T",
-			apiKeyPairAny)
+		log.Fatalf("Error reading Cloudability API keypair, expected an array, found %v",
+			reflect.TypeOf(apiKeyPairAny).String())
 	}
 	if len(apiKeyPair) != 2 {
 		log.Fatalf("Error reading Cloudability API keypair, expected 2 items, found %d",
@@ -221,8 +222,8 @@ func getApptioOpentoken(configMap Configuration, client http.Client) string {
 	apiSecret, ok2 := apiKeyPair[1].(string)
 	if !ok1 || !ok2 {
 		log.Fatalf(
-			"Error reading Cloudability API keypair, expected entries to be strings, found %T and %T",
-			apiKeyPair[0], apiKeyPair[1])
+			"Error reading Cloudability API keypair, expected entries to be strings, found %v and %v",
+			reflect.TypeOf(apiKeyPair[0]).String(), reflect.TypeOf(apiKeyPair[1]).String())
 	}
 	body := bytes.NewBufferString(`{"keyAccess":"` + apiAccessKey + `","keySecret":"` + apiSecret + `"}`)
 	authRequest, err := http.NewRequest("POST", "https://frontdoor.apptio.com/service/apikeylogin", body)
