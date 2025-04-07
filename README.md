@@ -13,7 +13,10 @@ section for configuring and customizing the operation of this tool.  The file
 is specified by the `-accounts` option, which uses the file `accounts.yaml`
 in the current directory by default.
 
-Run the binary with the `-help` option to list the command line options.
+`go run costpuller -report /dev/null` will update the source sheet (once 
+configured), and ignore the report output it generates. Use the `-help` 
+option to list all command line options.
+
 
 ### Providing Credentials
 
