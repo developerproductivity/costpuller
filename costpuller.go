@@ -56,7 +56,7 @@ func main() {
 	options := CommandLineOptions{
 		accountsFilePtr:   flag.String("accounts", "accounts.yaml", "file to read accounts list from"),
 		awsWriteTagsPtr:   flag.Bool("awswritetags", false, "write tags to AWS accounts (USE WITH CARE!)"),
-		costTypePtr:       flag.String("costtype", "UnblendedCost", `cost type to pull, one of "AmortizedCost", "BlendedCost", "NetAmortizedCost", "NetUnblendedCost", "NormalizedUsageAmount", "UnblendedCost", or "UsageQuantity"`),
+		costTypePtr:       flag.String("costtype", "AmortizedCost", `cost type to pull, one of "AmortizedCost", "BlendedCost", "NetAmortizedCost", "NetUnblendedCost", "NormalizedUsageAmount", "UnblendedCost", or "UsageQuantity"`),
 		csvfilePtr:        flag.String("csv", defaultCsvFile, "output file for csv data"),
 		debugPtr:          flag.Bool("debug", false, "outputs debug info"),
 		monthPtr:          flag.String("month", defaultMonth, `context month in format yyyy-mm`),

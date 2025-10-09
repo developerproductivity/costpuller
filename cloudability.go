@@ -28,7 +28,7 @@ type ResultsEntry struct {
 	AccountID      string `json:"vendor_account_identifier"`
 	AccountName    string `json:"vendor_account_name"`
 	CloudProvider  string `json:"vendor"`
-	Cost           string `json:"unblended_cost"`
+	Cost           string `json:"total_amortized_cost"`
 	CostCenter     string `json:"category4"`
 	PayerAccountId string `json:"account_identifier"`
 	UsageFamily    string `json:"usage_family"`
@@ -110,8 +110,10 @@ func getCloudabilityData(configMap Configuration, options CommandLineOptions) *C
 	}
 
 	costType := *options.costTypePtr
-	if costType == "UnblendedCost" {
-		costType = "unblended_cost"
+	if costType == "AmortizedCost" {
+		costType = "total_amortized_cost"
+	} else {
+		log.Fatalf("Unexpected cost type: %q -- this requires a change to the ResultsEntry.Cost tag", costType)
 	}
 
 	qParams := cUrl.Query()
