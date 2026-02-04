@@ -146,7 +146,7 @@ func getCloudabilityData(configMap Configuration, options CommandLineOptions) *C
 			filtersAny, filtersAny)
 	}
 	//qParams.Add("filters", "unblended_cost>0")
-	qParams.Set("view_id", "0")
+	qParams.Set("view_id", "1751167")
 	qParams.Set("limit", "0")
 	path, err := url.JoinPath(cUrl.Path, uri)
 	if err != nil {
