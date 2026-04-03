@@ -163,7 +163,7 @@ func newOutputObject(options CommandLineOptions, accountsFile AccountsFile) *Out
 		obj.csvFile = getCsvFile(options)
 	} else if *options.outputTypePtr == "gsheet" {
 		oauthConfig := getMapKeyValue(accountsFile.Configuration, "oauth", "configuration")
-		obj.httpClient = getGoogleOAuthHttpClient(oauthConfig)
+		obj.httpClient = getGoogleOAuthHttpClient(oauthConfig, *options.debugPtr)
 		obj.gsheetConfig = getMapKeyValue(accountsFile.Configuration, "gsheet", "configuration")
 	} else {
 		log.Fatalf("[main] Unexpected value for output type, %q", *options.outputTypePtr)

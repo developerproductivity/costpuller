@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -28,6 +29,71 @@ const defaultTokenCachePath = "gcloud"
 // OAuth 2.0 access and refresh token values.
 const tokenFileName = "costpuller_token.json"
 
+// costpullerCredentialsEnv is the environment variable that points to the
+// credentials JSON file for this program only. When set, Application Default
+// Credentials do not use GOOGLE_APPLICATION_CREDENTIALS, so other tools on the
+// same machine can keep using that variable without affecting costpuller.
+const costpullerCredentialsEnv = "COSTPULLER_CREDENTIALS"
+
+const googleSheetsScope = "https://www.googleapis.com/auth/spreadsheets"
+
+// oauthDebugf logs only when -debug is enabled (credential and token tracing).
+func oauthDebugf(debug bool, format string, args ...any) {
+	if debug {
+		log.Printf(format, args...)
+	}
+}
+
+// logCredentialSearchLocations logs where costpuller looks for credentials.
+func logCredentialSearchLocations(debug bool) {
+	oauthDebugf(debug, "[getGoogleOAuthHttpClient] Credential search (Google Sheets OAuth client JSON)")
+	if p := strings.TrimSpace(os.Getenv(costpullerCredentialsEnv)); p != "" {
+		oauthDebugf(debug, "[getGoogleOAuthHttpClient] %s is set to %q (this path is used; GOOGLE_APPLICATION_CREDENTIALS is ignored)", costpullerCredentialsEnv, p)
+		if _, err := os.Stat(p); err == nil {
+			oauthDebugf(debug, "[getGoogleOAuthHttpClient] File exists at %s path", costpullerCredentialsEnv)
+		} else {
+			oauthDebugf(debug, "[getGoogleOAuthHttpClient] File does NOT exist at %s path: %v", costpullerCredentialsEnv, err)
+		}
+		return
+	}
+	oauthDebugf(debug, "[getGoogleOAuthHttpClient] %s is not set; using Application Default Credentials", costpullerCredentialsEnv)
+	envCreds := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+	if envCreds != "" {
+		oauthDebugf(debug, "[getGoogleOAuthHttpClient] GOOGLE_APPLICATION_CREDENTIALS is set to: %q", envCreds)
+		if _, err := os.Stat(envCreds); err == nil {
+			oauthDebugf(debug, "[getGoogleOAuthHttpClient] File exists at GOOGLE_APPLICATION_CREDENTIALS path")
+		} else {
+			oauthDebugf(debug, "[getGoogleOAuthHttpClient] File does NOT exist at GOOGLE_APPLICATION_CREDENTIALS path: %v", err)
+		}
+	} else {
+		oauthDebugf(debug, "[getGoogleOAuthHttpClient] GOOGLE_APPLICATION_CREDENTIALS environment variable is not set")
+	}
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		defaultPath := filepath.Join(homeDir, ".config", "gcloud", "application_default_credentials.json")
+		oauthDebugf(debug, "[getGoogleOAuthHttpClient] Checking default ADC location: %q", defaultPath)
+		if _, err := os.Stat(defaultPath); err == nil {
+			oauthDebugf(debug, "[getGoogleOAuthHttpClient] File exists at default ADC location")
+		} else {
+			oauthDebugf(debug, "[getGoogleOAuthHttpClient] File does NOT exist at default ADC location: %v", err)
+		}
+	}
+}
+
+// loadGoogleCredentials loads credentials for the Sheets scope. If
+// COSTPULLER_CREDENTIALS is set, that file is read; otherwise standard ADC
+// resolution is used (including GOOGLE_APPLICATION_CREDENTIALS).
+func loadGoogleCredentials(ctx context.Context) (*google.Credentials, error) {
+	if p := strings.TrimSpace(os.Getenv(costpullerCredentialsEnv)); p != "" {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return nil, fmt.Errorf("read %s %q: %w", costpullerCredentialsEnv, p, err)
+		}
+		return google.CredentialsFromJSON(ctx, b, googleSheetsScope)
+	}
+	return google.FindDefaultCredentials(ctx, googleSheetsScope)
+}
+
 // getGoogleOAuthHttpClient accepts a mapping of configuration value strings
 // and returns an HTTP client which can be used to make authorized Google API
 // requests.  The token is obtained either using values cached in a local file
@@ -37,23 +103,47 @@ const tokenFileName = "costpuller_token.json"
 // The Google OAuth 2.0 Client configuration is constructed from a local
 // credentials file (which can be downloaded from https://console.developers.google.com,
 // under "Credentials").  It is located using the default mechanisms (e.g., in
-// ${HOME}/.config/gcloud/application_default_credentials.json).  (Currently,
-// the scope of the authorization is limited to the Google Sheets APIs.)
-func getGoogleOAuthHttpClient(oauthConfigMap Configuration) *http.Client {
+// ${HOME}/.config/gcloud/application_default_credentials.json).  Set
+// COSTPULLER_CREDENTIALS to a JSON path to use a dedicated file and ignore
+// GOOGLE_APPLICATION_CREDENTIALS for this process.  (Currently, the scope of
+// the authorization is limited to the Google Sheets APIs.)
+func getGoogleOAuthHttpClient(oauthConfigMap Configuration, debug bool) *http.Client {
 	ctx := context.Background()
 
-	credObj, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/spreadsheets")
+	logCredentialSearchLocations(debug)
+
+	credObj, err := loadGoogleCredentials(ctx)
 	if err != nil {
-		log.Fatalf("Unable to read OAuth client credentials file: %v", err)
+		log.Printf("[getGoogleOAuthHttpClient] Error loading credentials: %v", err)
+		log.Fatalf("[getGoogleOAuthHttpClient] Unable to read OAuth client credentials file: %v", err)
 	}
 
-	config, err := google.ConfigFromJSON(credObj.JSON, "https://www.googleapis.com/auth/spreadsheets")
-	if err != nil {
-		log.Fatalf("Unable to construct a client configuration: %v", err)
+	oauthDebugf(debug, "[getGoogleOAuthHttpClient] Credentials found successfully")
+	oauthDebugf(debug, "[getGoogleOAuthHttpClient] Project ID: %q", credObj.ProjectID)
+	oauthDebugf(debug, "[getGoogleOAuthHttpClient] Credentials JSON length: %d bytes", len(credObj.JSON))
+	
+	// Try to determine credential type from JSON
+	var credType struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(credObj.JSON, &credType); err == nil {
+		oauthDebugf(debug, "[getGoogleOAuthHttpClient] Credential type: %q", credType.Type)
+	} else {
+		oauthDebugf(debug, "[getGoogleOAuthHttpClient] Unable to determine credential type from JSON: %v", err)
 	}
 
-	token, tokenCachePath := getToken(oauthConfigMap, config, ctx)
-	cacheToken(token, tokenCachePath)
+	config, err := google.ConfigFromJSON(credObj.JSON, googleSheetsScope)
+	if err != nil {
+		log.Printf("[getGoogleOAuthHttpClient] Error from ConfigFromJSON: %v", err)
+		log.Printf("[getGoogleOAuthHttpClient] Credential type was: %q", credType.Type)
+		log.Fatalf("[getGoogleOAuthHttpClient] Unable to construct a client configuration: %v", err)
+	}
+	
+	oauthDebugf(debug, "[getGoogleOAuthHttpClient] OAuth2 config created successfully")
+	oauthDebugf(debug, "[getGoogleOAuthHttpClient] Client ID: %q", config.ClientID)
+
+	token, tokenCachePath := getToken(oauthConfigMap, config, ctx, debug)
+	cacheToken(token, tokenCachePath, debug)
 
 	return config.Client(ctx, token)
 }
@@ -65,36 +155,56 @@ func getToken(
 	oauthConfigMap Configuration,
 	config *oauth2.Config,
 	ctx context.Context,
+	debug bool,
 ) (token *oauth2.Token, tokenCachePath string) {
-	var tokenCacheFile *os.File
 	path := getMapKeyString(oauthConfigMap, "tokenCachePath", "")
 	tokenCachePath, err := getCacheFileName(path)
-	if err == nil {
-		tokenCacheFile, err = os.Open(tokenCachePath)
-	}
-	if err == nil {
-		token = getCachedToken(config, tokenCacheFile, ctx)
-		closeFile(tokenCacheFile)
-	} else if errors.Is(err, os.ErrNotExist) {
+	if err != nil {
+		// Can't determine cache path, get a new token
+		oauthDebugf(debug, "[getToken] Unable to determine cache path, getting new token")
 		port := getMapKeyString(oauthConfigMap, "port", "")
-		token = getNewToken(config, port, ctx)
-	} else {
-		log.Fatalf("Unexpected error accessing the token cache file, %q: %v", tokenCachePath, err)
+		return getNewToken(config, port, ctx), tokenCachePath
 	}
-	return
+	
+	// Try to open the cache file
+	tokenCacheFile, err := os.Open(tokenCachePath)
+	if err == nil {
+		// Try to use cached token, but if it fails due to invalid credentials,
+		// fall through to getting a new token
+		token, err = getCachedTokenSafe(config, tokenCacheFile, ctx, debug)
+		closeFile(tokenCacheFile)
+		if err == nil {
+			oauthDebugf(debug, "[getToken] Using cached token from %q", tokenCachePath)
+			return token, tokenCachePath
+		}
+		// If we get here, the cached token was invalid - delete it and get a new one
+		oauthDebugf(debug, "[getToken] Cached token invalid, will get a new token")
+		if removeErr := os.Remove(tokenCachePath); removeErr != nil {
+			log.Printf("[getToken] Warning: unable to delete invalid cached token: %v", removeErr)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		// Unexpected error opening cache file
+		log.Fatalf("[getToken] Unexpected error accessing the token cache file, %q: %v", tokenCachePath, err)
+	}
+	
+	// Get a new token (either cache doesn't exist or was invalid)
+	oauthDebugf(debug, "[getToken] Getting new OAuth token")
+	port := getMapKeyString(oauthConfigMap, "port", "")
+	token = getNewToken(config, port, ctx)
+	return token, tokenCachePath
 }
 
 // cacheToken is a helper function which accepts a token and a file path and
 // stores the token in the indicated file.  The contents of the file are
 // replaced with the new value.  If the path is blank, the function prints a
 // message and returns; other errors result in exiting the process.
-func cacheToken(token *oauth2.Token, tokenCachePath string) {
+func cacheToken(token *oauth2.Token, tokenCachePath string, debug bool) {
 	if tokenCachePath == "" {
-		log.Println("The token will not be cached.")
+		oauthDebugf(debug, "The token will not be cached.")
 	} else {
 		newTokenCacheFile, err := os.OpenFile(tokenCachePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 		if err == nil {
-			log.Printf("Caching oauth token in %q.", tokenCachePath)
+			oauthDebugf(debug, "Caching oauth token in %q.", tokenCachePath)
 			err = json.NewEncoder(newTokenCacheFile).Encode(token)
 			closeFile(newTokenCacheFile)
 		}
@@ -129,22 +239,31 @@ func getCacheFileName(tokenCachePath string) (string, error) {
 	return filepath.Join(tokenCachePath, tokenFileName), nil
 }
 
-// getCachedToken is a helper function which reads a cached token from the
+// getCachedTokenSafe is a helper function which reads a cached token from the
 // provided file, refreshes it using the provided configuration and context,
-// and returns the resulting token.
-func getCachedToken(config *oauth2.Config, cacheFile *os.File, ctx context.Context) *oauth2.Token {
+// and returns the resulting token. If the token is invalid (e.g., created with
+// different credentials), it returns an error instead of fatally exiting.
+func getCachedTokenSafe(config *oauth2.Config, cacheFile *os.File, ctx context.Context, debug bool) (*oauth2.Token, error) {
 	token := &oauth2.Token{}
 	err := json.NewDecoder(cacheFile).Decode(token)
 	if err != nil {
-		log.Fatalf("Unable to parse cached OAuth tokens, %q: %v", cacheFile.Name(), err)
+		return nil, fmt.Errorf("unable to parse cached OAuth tokens: %w", err)
 	}
 
+	oauthDebugf(debug, "[getCachedTokenSafe] Attempting to refresh cached token from %q", cacheFile.Name())
 	token, err = config.TokenSource(ctx, token).Token()
 	if err != nil {
-		log.Fatalf("Unable to refresh the cached OAuth tokens: %v", err)
+		// If the error is "unauthorized_client", it likely means the cached token
+		// was created with different OAuth client credentials.
+		if strings.Contains(err.Error(), "unauthorized_client") {
+			oauthDebugf(debug, "[getCachedTokenSafe] Cached token is invalid (likely created with different credentials): %v", err)
+			return nil, fmt.Errorf("cached token invalid: %w", err)
+		}
+		return nil, fmt.Errorf("unable to refresh cached token: %w", err)
 	}
 
-	return token
+	oauthDebugf(debug, "[getCachedTokenSafe] Successfully refreshed cached token")
+	return token, nil
 }
 
 // getNewToken is a helper function which prompts the user to use their browser
