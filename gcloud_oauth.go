@@ -200,7 +200,7 @@ func getToken(
 // message and returns; other errors result in exiting the process.
 func cacheToken(token *oauth2.Token, tokenCachePath string, debug bool) {
 	if tokenCachePath == "" {
-		oauthDebugf(debug, "The token will not be cached.")
+		log.Println(debug, "The token will not be cached.")
 	} else {
 		newTokenCacheFile, err := os.OpenFile(tokenCachePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 		if err == nil {
