@@ -36,6 +36,10 @@ type AccountsFile struct {
 type Configuration map[string]any
 type Team map[string][]AccountEntry
 
+// costpullerDebug mirrors the -debug flag; set in main after flag.Parse.
+// Subsystems (OAuth, AWS, etc.) read it instead of threading a bool through helpers.
+var costpullerDebug bool
+
 // AccountEntry describes an account with metadata.
 type AccountEntry struct {
 	AccountID        string  `yaml:"accountid"`
@@ -65,6 +69,7 @@ func main() {
 		taggedAccountsPtr: flag.Bool("taggedaccounts", false, "use the AWS tags as account list source"),
 	}
 	flag.Parse()
+	costpullerDebug = *options.debugPtr
 
 	if *options.csvfilePtr == defaultCsvFile && *options.monthPtr != defaultMonth {
 		newDefaultCsvFile := fmt.Sprintf("output-%s.csv", *options.monthPtr)
@@ -99,7 +104,7 @@ func main() {
 				awsProfile,
 			)
 		}
-		awsPuller := NewAwsPuller(awsProfile, *options.debugPtr)
+		awsPuller := NewAwsPuller(awsProfile)
 
 		if *options.awsWriteTagsPtr {
 			writeAwsTags(awsPuller, options)
@@ -163,7 +168,7 @@ func newOutputObject(options CommandLineOptions, accountsFile AccountsFile) *Out
 		obj.csvFile = getCsvFile(options)
 	} else if *options.outputTypePtr == "gsheet" {
 		oauthConfig := getMapKeyValue(accountsFile.Configuration, "oauth", "configuration")
-		obj.httpClient = getGoogleOAuthHttpClient(oauthConfig, *options.debugPtr)
+		obj.httpClient = getGoogleOAuthHttpClient(oauthConfig)
 		obj.gsheetConfig = getMapKeyValue(accountsFile.Configuration, "gsheet", "configuration")
 	} else {
 		log.Fatalf("[main] Unexpected value for output type, %q", *options.outputTypePtr)

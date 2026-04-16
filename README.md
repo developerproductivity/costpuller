@@ -36,7 +36,7 @@ option to list all command line options.
    OAuth client.  The client configuration is provided in the conventional
    location (e.g., `${HOME}/.config/gcloud/application_default_credentials.json`
    or pointed to by the `GOOGLE_APPLICATION_CREDENTIALS` environment variable;
-   if you set `COSTPULLER_CREDENTIALS` to a JSON file path, costpuller uses only
+   if you set `COSTPULLER_GOOGLE_CREDENTIALS` to a JSON file path, costpuller uses only
    that file and ignores `GOOGLE_APPLICATION_CREDENTIALS` in this process;
    see the Google [ADC documentation](https://cloud.google.com/docs/authentication/set-up-adc-local-dev-environment))
    and can be downloaded from a project on https://console.developers.google.com,
