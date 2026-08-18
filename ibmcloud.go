@@ -128,6 +128,7 @@ func serviceCall(
 func getSheetDataFromIbmcloud(
 	accounts []IbmcResultsEntry,
 	accountsMetadata map[string]*AccountMetadata,
+	patterns []PatternEntry,
 	configMap Configuration,
 	costCells map[string]map[string]float64,
 	metadata map[string]providerAccountMetadata,
@@ -144,7 +145,8 @@ func getSheetDataFromIbmcloud(
 		// attributed to our cost center that we're not currently tracking.
 		accountId := accountSummary.AccountID
 		if skipAccountEntry(
-			accountsMetadata[accountId],
+			accountsMetadata,
+			patterns,
 			accountId,
 			accountSummary.CostCenter,
 			accountSummary.CloudProvider,
