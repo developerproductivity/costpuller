@@ -101,34 +101,24 @@ func getUpdateLocation(
 		)
 	} else {
 		log.Printf("Warning:  overwriting sheet %q", newSheetName)
-		if int64(newRowCount) > newSheetProperties.GridProperties.RowCount ||
-			int64(newColumnCount) > newSheetProperties.GridProperties.ColumnCount {
-			rows := newSheetProperties.GridProperties.RowCount
-			cols := newSheetProperties.GridProperties.ColumnCount
-			if int64(newRowCount) > rows {
-				rows = int64(newRowCount)
-			}
-			if int64(newColumnCount) > cols {
-				cols = int64(newColumnCount)
-			}
+		rows := max(int64(newRowCount), newSheetProperties.GridProperties.RowCount)
+		cols := max(int64(newColumnCount), newSheetProperties.GridProperties.ColumnCount)
+		if rows != newSheetProperties.GridProperties.RowCount ||
+			cols != newSheetProperties.GridProperties.ColumnCount {
 			log.Printf("Resizing sheet %q from %dx%d to %dx%d",
 				newSheetName,
 				newSheetProperties.GridProperties.RowCount,
 				newSheetProperties.GridProperties.ColumnCount,
 				rows, cols)
+			newSheetProperties.GridProperties.RowCount = rows
+			newSheetProperties.GridProperties.ColumnCount = cols
 			_, err := srv.Spreadsheets.BatchUpdate(sheetObject.SpreadsheetId,
 				&sheets.BatchUpdateSpreadsheetRequest{
 					Requests: []*sheets.Request{
 						{
 							UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
 								Fields: "gridProperties(rowCount,columnCount)",
-								Properties: &sheets.SheetProperties{
-									SheetId: newSheetProperties.SheetId,
-									GridProperties: &sheets.GridProperties{
-										RowCount:    rows,
-										ColumnCount: cols,
-									},
-								},
+								Properties: newSheetProperties,
 							},
 						},
 					},
@@ -136,8 +126,6 @@ func getUpdateLocation(
 			if err != nil {
 				log.Fatalf("Error resizing sheet %q: %v", newSheetName, err)
 			}
-			newSheetProperties.GridProperties.RowCount = rows
-			newSheetProperties.GridProperties.ColumnCount = cols
 		}
 	}
 	return getDataGridRange(newSheetProperties)

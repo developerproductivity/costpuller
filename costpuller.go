@@ -571,18 +571,20 @@ func skipAccountEntry(
 	accountMetadata := accountsMetadata[accountId]
 	if accountMetadata == nil {
 		ourCostCenter := getMapKeyString(configMap, "cost_center", "")
-		for _, p := range patterns {
-			if strings.HasPrefix(accountId, p.Prefix) && costCenter == ourCostCenter {
-				accountsMetadata[accountId] = &AccountMetadata{
-					AccountId:     accountId,
-					Category:      p.Category,
-					CloudProvider: p.CloudProvider,
-					DataFound:     false,
-					Description:   p.Description,
-					Group:         p.Group,
+		if costCenter == ourCostCenter {
+			for _, p := range patterns {
+				if strings.HasPrefix(accountId, p.Prefix) {
+					accountsMetadata[accountId] = &AccountMetadata{
+						AccountId:     accountId,
+						Category:      p.Category,
+						CloudProvider: p.CloudProvider,
+						DataFound:     false,
+						Description:   p.Description,
+						Group:         p.Group,
+					}
+					accountMetadata = accountsMetadata[accountId]
+					break
 				}
-				accountMetadata = accountsMetadata[accountId]
-				break
 			}
 		}
 	}
