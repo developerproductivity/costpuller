@@ -255,6 +255,7 @@ func getApptioOpentoken(configMap Configuration, client http.Client) string {
 func getSheetDataFromCloudability(
 	cldy *CloudabilityCostData,
 	accountsMetadata map[string]*AccountMetadata,
+	patterns []PatternEntry,
 	configMap Configuration,
 	costCells map[string]map[string]float64,
 	columnHeadsSet map[string]struct{},
@@ -271,7 +272,8 @@ func getSheetDataFromCloudability(
 		// that we don't issue multiple warnings for them; warn about accounts
 		// attributed to our cost center that we're not currently tracking.
 		if skipAccountEntry(
-			accountsMetadata[entry.AccountID],
+			accountsMetadata,
+			patterns,
 			entry.AccountID,
 			entry.CostCenter,
 			entry.CloudProvider,

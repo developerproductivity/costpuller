@@ -37,8 +37,12 @@ type Configuration map[string]any
 type Team map[string][]AccountEntry
 
 // AccountEntry describes an account with metadata.
+// If Pattern is set (instead of AccountID), any account whose ID starts with
+// the pattern string is automatically matched and assigned to this entry's
+// group and provider.
 type AccountEntry struct {
 	AccountID        string  `yaml:"accountid"`
+	Pattern          string  `yaml:"pattern"`
 	StandardValue    float64 `yaml:"standardvalue"`
 	DeviationPercent int     `yaml:"deviationpercent"`
 	Category         string  `yaml:"category"`
@@ -80,7 +84,7 @@ func main() {
 	if len(accountsFile.Providers) == 0 {
 		log.Fatalf("[main] error in accounts file: empty or missing \"cloud_providers\" section")
 	}
-	accountMetadata := getAccountMetadata(accountsFile.Providers)
+	accountMetadata, accountPatterns := getAccountMetadata(accountsFile.Providers)
 
 	output := newOutputObject(options, accountsFile)
 	defer output.close()
@@ -121,7 +125,7 @@ func main() {
 		if cldyCostData == nil || cldyCostData.TotalResults == 0 || len(cldyCostData.Results) == 0 {
 			log.Fatalf("[main] no Cloudability data")
 		}
-		getSheetDataFromCloudability(cldyCostData, accountMetadata, cldy, costCells, columnHeadsSet, metadata)
+		getSheetDataFromCloudability(cldyCostData, accountMetadata, accountPatterns, cldy, costCells, columnHeadsSet, metadata)
 
 		ibmc, fetchIbmcloudData := accountsFile.Configuration["ibmcloud"]
 		if fetchIbmcloudData {
@@ -129,7 +133,7 @@ func main() {
 			if ibmCostData == nil || len(ibmCostData) == 0 {
 				log.Fatal("[main] no IBM Cloud data")
 			}
-			getSheetDataFromIbmcloud(ibmCostData, accountMetadata, ibmc, costCells, metadata)
+			getSheetDataFromIbmcloud(ibmCostData, accountMetadata, accountPatterns, ibmc, costCells, metadata)
 		}
 
 		checkMissing(accountMetadata, cldyCostData)
@@ -422,6 +426,17 @@ type AccountMetadata struct {
 	Group         string
 }
 
+// PatternEntry holds a prefix pattern from the accounts YAML file along with
+// the provider and group it belongs to, so that unknown accounts can be
+// matched dynamically.
+type PatternEntry struct {
+	Prefix        string
+	CloudProvider string
+	Group         string
+	Category      string
+	Description   string
+}
+
 var accountIdPatterns = map[string]*regexp.Regexp{
 	"Amazon": regexp.MustCompile(`^([0-9]{4})-?([0-9]{4})-?([0-9]{4})$`),                                         // e.g., "5901-8385-7305"
 	"Azure":  regexp.MustCompile(`^([0-9a-f]{8})-?([0-9a-f]{4})-?([0-9a-f]{4})-?([0-9a-f]{4})-?([0-9a-f]{12})$`), // e.g., "b0ad4737-8299-4c0a-9dd5-959cbcf8d81c"
@@ -429,8 +444,10 @@ var accountIdPatterns = map[string]*regexp.Regexp{
 
 // getAccountMetadata takes the hierarchy from the accounts YAML file and
 // inverts it, so that, given an account ID, we can find the cloud provider
-// and group that the account is associated with.
-func getAccountMetadata(providers map[string]Team) (metadata map[string]*AccountMetadata) {
+// and group that the account is associated with.  Entries with a Pattern
+// field (instead of AccountID) are collected separately and returned as
+// patterns for dynamic matching.
+func getAccountMetadata(providers map[string]Team) (metadata map[string]*AccountMetadata, patterns []PatternEntry) {
 	metadata = make(map[string]*AccountMetadata)
 	for provider, groups := range providers {
 		if provider == "aws" { // Convert for historical compatibility
@@ -438,6 +455,16 @@ func getAccountMetadata(providers map[string]Team) (metadata map[string]*Account
 		}
 		for group, groupEntries := range groups {
 			for _, entry := range groupEntries {
+				if entry.Pattern != "" {
+					patterns = append(patterns, PatternEntry{
+						Prefix:        entry.Pattern,
+						CloudProvider: provider,
+						Group:         group,
+						Category:      entry.Category,
+						Description:   entry.Description,
+					})
+					continue
+				}
 				// Use the account ID as the key to the map.  Amazon and Azure
 				// use IDs with a fixed format -- check that the ID from the
 				// accounts file matches the format.  For historical
@@ -528,8 +555,11 @@ func getStringFromAny(anyValue any, message string) (value string) {
 // account entries that we're not looking for.  It updates a list of them so
 // that we don't issue multiple warnings for them; it warns about account
 // entries attributed to our cost center that we're not currently tracking.
+// If the account is not explicitly listed but matches a prefix pattern, it
+// is dynamically added to the metadata map and processed normally.
 func skipAccountEntry(
-	accountMetadata *AccountMetadata,
+	accountsMetadata map[string]*AccountMetadata,
+	patterns []PatternEntry,
 	accountId string,
 	costCenter string,
 	providerConfigName string,
@@ -538,6 +568,26 @@ func skipAccountEntry(
 	configMap Configuration,
 	dataSource string,
 ) bool {
+	accountMetadata := accountsMetadata[accountId]
+	if accountMetadata == nil {
+		ourCostCenter := getMapKeyString(configMap, "cost_center", "")
+		if costCenter == ourCostCenter {
+			for _, p := range patterns {
+				if strings.HasPrefix(accountId, p.Prefix) {
+					accountsMetadata[accountId] = &AccountMetadata{
+						AccountId:     accountId,
+						Category:      p.Category,
+						CloudProvider: p.CloudProvider,
+						DataFound:     false,
+						Description:   p.Description,
+						Group:         p.Group,
+					}
+					accountMetadata = accountsMetadata[accountId]
+					break
+				}
+			}
+		}
+	}
 	if accountMetadata == nil {
 		if _, exists := ignored[accountId]; !exists {
 			ourCostCenter := getMapKeyString(configMap, "cost_center", "")

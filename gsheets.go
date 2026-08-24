@@ -101,6 +101,32 @@ func getUpdateLocation(
 		)
 	} else {
 		log.Printf("Warning:  overwriting sheet %q", newSheetName)
+		rows := max(int64(newRowCount), newSheetProperties.GridProperties.RowCount)
+		cols := max(int64(newColumnCount), newSheetProperties.GridProperties.ColumnCount)
+		if rows != newSheetProperties.GridProperties.RowCount ||
+			cols != newSheetProperties.GridProperties.ColumnCount {
+			log.Printf("Resizing sheet %q from %dx%d to %dx%d",
+				newSheetName,
+				newSheetProperties.GridProperties.RowCount,
+				newSheetProperties.GridProperties.ColumnCount,
+				rows, cols)
+			newSheetProperties.GridProperties.RowCount = rows
+			newSheetProperties.GridProperties.ColumnCount = cols
+			_, err := srv.Spreadsheets.BatchUpdate(sheetObject.SpreadsheetId,
+				&sheets.BatchUpdateSpreadsheetRequest{
+					Requests: []*sheets.Request{
+						{
+							UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
+								Fields: "gridProperties(rowCount,columnCount)",
+								Properties: newSheetProperties,
+							},
+						},
+					},
+				}).Do()
+			if err != nil {
+				log.Fatalf("Error resizing sheet %q: %v", newSheetName, err)
+			}
+		}
 	}
 	return getDataGridRange(newSheetProperties)
 }
