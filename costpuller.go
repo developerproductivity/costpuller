@@ -36,6 +36,10 @@ type AccountsFile struct {
 type Configuration map[string]any
 type Team map[string][]AccountEntry
 
+// costpullerDebug mirrors the -debug flag; set in main after flag.Parse.
+// Subsystems (OAuth, AWS, etc.) read it instead of threading a bool through helpers.
+var costpullerDebug bool
+
 // AccountEntry describes an account with metadata.
 // If Pattern is set (instead of AccountID), any account whose ID starts with
 // the pattern string is automatically matched and assigned to this entry's
@@ -69,6 +73,7 @@ func main() {
 		taggedAccountsPtr: flag.Bool("taggedaccounts", false, "use the AWS tags as account list source"),
 	}
 	flag.Parse()
+	costpullerDebug = *options.debugPtr
 
 	if *options.csvfilePtr == defaultCsvFile && *options.monthPtr != defaultMonth {
 		newDefaultCsvFile := fmt.Sprintf("output-%s.csv", *options.monthPtr)
@@ -103,7 +108,7 @@ func main() {
 				awsProfile,
 			)
 		}
-		awsPuller := NewAwsPuller(awsProfile, *options.debugPtr)
+		awsPuller := NewAwsPuller(awsProfile)
 
 		if *options.awsWriteTagsPtr {
 			writeAwsTags(awsPuller, options)

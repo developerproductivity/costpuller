@@ -25,14 +25,14 @@ type AwsPuller struct {
 	debug   bool
 }
 
-// NewAwsPuller returns a new AWS client.
-func NewAwsPuller(profile string, debug bool) *AwsPuller {
+// NewAwsPuller returns a new AWS client. Debug output follows package costpullerDebug (-debug).
+func NewAwsPuller(profile string) *AwsPuller {
 	awsP := new(AwsPuller)
 	awsP.session = session.Must(session.NewSessionWithOptions(session.Options{
 		Profile:           profile,
 		SharedConfigState: session.SharedConfigEnable,
 	}))
-	awsP.debug = debug
+	awsP.debug = costpullerDebug
 	return awsP
 }
 
